@@ -5,6 +5,7 @@ main.py — FastAPI + webhook Twilio WhatsApp
 import json
 import logging
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Form, Response
 from contextlib import asynccontextmanager
@@ -69,22 +70,25 @@ async def webhook(
     db.upsert_user(phone)
     user = db.get_user(phone)
 
-    reply = await dispatch(phone, text, week, user)
+    replies = await dispatch(phone, text, week, user)
 
-    if reply:
-        send_whatsapp(phone, reply)
+    if isinstance(replies, list):
+        for r in replies:
+            send_whatsapp(phone, r)
+    elif replies:
+        send_whatsapp(phone, replies)
 
     return Response(content="", media_type="text/xml")
 
 
 # ── Dispatch ───────────────────────────────────────────────────────────────────
 
-async def dispatch(phone: str, text: str, week: str, user) -> str | None:
+async def dispatch(phone: str, text: str, week: str, user) -> list[str] | str | None:
 
     # 1. Pas encore de nom — premier contact
     if not user["name"] and not user["awaiting_name"]:
         db.set_awaiting_name(phone, True)
-        return "C'est quoi déjà ton blaze chef ?"
+        return "Salut moi c'est Gege le coach, donnes moi ton blaze à toi ?"
 
     # 2. En attente du blaze
     if user["awaiting_name"]:
@@ -113,16 +117,26 @@ async def dispatch(phone: str, text: str, week: str, user) -> str | None:
 
 # ── Handlers ───────────────────────────────────────────────────────────────────
 
-async def handle_name_response(phone: str, text: str) -> str:
+async def handle_name_response(phone: str, text: str) -> list[str] | str:
     name = await llm.extract_name(text)
     if not name:
         return "J'ai pas capté ton blaze là, tu peux redire ?"
     db.set_user_name(phone, name)
-    return (
-        f"C'est noté {name} 💪 Bienvenue dans l'équipe !\n\n"
-        f"Maintenant dis-moi ton programme sportif de la semaine et j'gère tout.\n"
-        f"Ex : \"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
-    )
+
+    now = datetime.now(ZoneInfo("Europe/Paris"))
+    days_fr = {
+        "Monday": "lundi", "Tuesday": "mardi", "Wednesday": "mercredi",
+        "Thursday": "jeudi", "Friday": "vendredi", "Saturday": "samedi", "Sunday": "dimanche",
+    }
+    day_fr = days_fr[now.strftime("%A")]
+    time_str = now.strftime("%Hh%M")
+
+    return [
+        f"Moi c'est Gege ton coach 💪 J'suis là pour surveiller et tracker si tu tiens tes engagements de sport chaque semaine. "
+        f"Chaque semaine tu devras me répondre si oui ou non tu l'as bien fait, avec un ptit commentaire pour l'histoire.",
+        f"On va commencer : cette semaine on est {day_fr} et il est {time_str}. "
+        f"Quand compte tu faire du sport avant dimanche soir {name} ?",
+    ]
 
 
 async def handle_weekly_plan(phone: str, name: str, text: str, week: str) -> str:
