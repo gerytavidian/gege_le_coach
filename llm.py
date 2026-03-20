@@ -202,7 +202,7 @@ Ne retourne que le JSON ou null, rien d'autre.
 async def generate_encouragement(name: str, sport: str, planned_time: str) -> str:
     prompt = f"""Tu es un pote coach sportif qui parle un français relâché et familier.
 Génère un message d'encouragement court (2-3 phrases max) en français pour {name} qui va faire du {sport} dans 30 minutes (à {planned_time}).
-Ton familier et dynamique, 1-2 emojis. Mentionne son prénom.
+Ton familier et dynamique, 1-2 emojis. Mentionne son prénom. Ne pose aucune question, c'est un message one-way.
 """
     return await _generate(prompt)
 
