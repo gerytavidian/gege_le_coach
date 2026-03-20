@@ -42,6 +42,9 @@ def init_db():
         cur.execute("""
             ALTER TABLE users ADD COLUMN IF NOT EXISTS awaiting_plan_details TEXT
         """)
+        cur.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS paused BOOLEAN DEFAULT FALSE
+        """)
 
         cur.execute("""
             CREATE TABLE IF NOT EXISTS weekly_plans (
@@ -110,6 +113,14 @@ def set_awaiting_name(phone: str, value: bool):
     with get_db() as cur:
         cur.execute(
             "UPDATE users SET awaiting_name = %s WHERE phone = %s",
+            (value, phone),
+        )
+
+
+def set_user_paused(phone: str, value: bool):
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE users SET paused = %s WHERE phone = %s",
             (value, phone),
         )
 
