@@ -125,6 +125,17 @@ def set_user_paused(phone: str, value: bool):
         )
 
 
+def reset_user(phone: str):
+    """Supprime toutes les données de l'utilisateur pour repartir de zéro."""
+    with get_db() as cur:
+        cur.execute("DELETE FROM sessions WHERE phone = %s", (phone,))
+        cur.execute("DELETE FROM weekly_plans WHERE phone = %s", (phone,))
+        cur.execute(
+            "UPDATE users SET name = NULL, awaiting_name = FALSE, awaiting_plan_details = NULL, paused = FALSE WHERE phone = %s",
+            (phone,),
+        )
+
+
 def get_awaiting_plan_details(phone: str) -> str | None:
     with get_db() as cur:
         cur.execute("SELECT awaiting_plan_details FROM users WHERE phone = %s", (phone,))

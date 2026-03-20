@@ -119,11 +119,19 @@ def _is_reprendre(text: str) -> bool:
     return t in {"reprendre", "retour", "je reprends", "relance", "j'y retourne", "c'est reparti"}
 
 
+def _is_reset(text: str) -> bool:
+    return text.lower().strip() == "reset"
+
+
 async def dispatch(phone: str, text: str, week: str, user) -> list[str] | str | None:
 
-    # 0. Commandes toujours disponibles : aide, pause, reprendre
+    # 0. Commandes toujours disponibles : aide, pause, reprendre, reset
     if _is_aide(text):
         return _AIDE_MESSAGE
+
+    if _is_reset(text):
+        db.reset_user(phone)
+        return "C'est reparti de zéro 🔄 Donnes moi ton blaze ?"
 
     if _is_reprendre(text):
         db.set_user_paused(phone, False)
