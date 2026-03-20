@@ -177,6 +177,25 @@ def insert_sessions(phone: str, week_start: str, sessions: list[dict]):
         )
 
 
+def append_sessions(phone: str, week_start: str, sessions: list[dict]):
+    """Ajoute des sessions sans supprimer les existantes."""
+    with get_db() as cur:
+        cur.executemany(
+            """INSERT INTO sessions (phone, week_start, sport, planned_day, planned_time)
+               VALUES (%(phone)s, %(week_start)s, %(sport)s, %(planned_day)s, %(planned_time)s)""",
+            [
+                {
+                    "phone": phone,
+                    "week_start": week_start,
+                    "sport": s["sport"],
+                    "planned_day": s["day"],
+                    "planned_time": s["time"],
+                }
+                for s in sessions
+            ],
+        )
+
+
 def get_sessions_for_week(phone: str, week_start: str) -> list:
     with get_db() as cur:
         cur.execute(

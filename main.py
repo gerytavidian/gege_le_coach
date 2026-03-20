@@ -159,13 +159,33 @@ async def handle_weekly_plan(phone: str, name: str, text: str, week: str) -> str
         db.set_awaiting_plan_details(phone, json.dumps({"original": text}))
         return question
 
-    return _save_and_confirm_plan(phone, name, week, text, parsed)
+    return _add_sessions_and_ask_more(phone, name, week, parsed, first=True)
 
 
 async def handle_plan_detail_response(
     phone: str, name: str, text: str, week: str, awaiting_json: str
 ) -> str:
     awaiting = json.loads(awaiting_json)
+
+    # Mode : on attend une réponse "oui/non" à "t'as une autre séance ?"
+    if awaiting.get("mode") == "awaiting_more_sessions":
+        if _is_no(text):
+            db.set_awaiting_plan_details(phone, None)
+            return _final_recap(phone, name, week)
+        # L'utilisateur décrit une nouvelle séance (ou dit juste "oui")
+        if _is_yes(text):
+            return "C'est quoi ?"
+        # Il décrit directement la séance
+        parsed = await llm.parse_weekly_plan(text)
+        if not parsed or not parsed.get("sessions"):
+            return "C'est quoi comme sport, quel jour et à quelle heure ?"
+        question = _missing_question(parsed["sessions"])
+        if question:
+            db.set_awaiting_plan_details(phone, json.dumps({"original": text}))
+            return question
+        return _add_sessions_and_ask_more(phone, name, week, parsed)
+
+    # Mode : on complète un message incomplet (sport ou heure manquant)
     combined = awaiting["original"] + " " + text
     parsed = await llm.parse_weekly_plan(combined)
 
@@ -182,7 +202,7 @@ async def handle_plan_detail_response(
         return question
 
     db.set_awaiting_plan_details(phone, None)
-    return _save_and_confirm_plan(phone, name, week, combined, parsed)
+    return _add_sessions_and_ask_more(phone, name, week, parsed)
 
 
 def _missing_question(sessions: list) -> str | None:
@@ -205,14 +225,29 @@ def _missing_question(sessions: list) -> str | None:
     return None
 
 
-def _save_and_confirm_plan(phone: str, name: str, week: str, raw_text: str, parsed: dict) -> str:
+def _add_sessions_and_ask_more(
+    phone: str, name: str, week: str, parsed: dict, first: bool = False
+) -> str:
     raw_json = json.dumps(parsed, ensure_ascii=False)
-    db.upsert_weekly_plan(phone, week, raw_text, raw_json)
-    db.insert_sessions(phone, week, parsed["sessions"])
+    if first:
+        db.upsert_weekly_plan(phone, week, "", raw_json)
+        db.insert_sessions(phone, week, parsed["sessions"])
+    else:
+        db.append_sessions(phone, week, parsed["sessions"])
 
     lines = "\n".join(
         f"  • {s['sport'].capitalize()} — {_day_fr(s['day'])} à {s['time']}"
         for s in parsed["sessions"]
+    )
+    db.set_awaiting_plan_details(phone, json.dumps({"mode": "awaiting_more_sessions"}))
+    return f"Noté 👊 {lines}\n\nT'as une autre séance de prévue cette semaine ?"
+
+
+def _final_recap(phone: str, name: str, week: str) -> str:
+    sessions = db.get_sessions_for_week(phone, week)
+    lines = "\n".join(
+        f"  • {s['sport'].capitalize()} — {_day_fr(s['planned_day'])} à {s['planned_time']}"
+        for s in sessions
     )
     return (
         f"C'est bon {name}, j'ai tout noté 💪\n\n"
@@ -220,6 +255,17 @@ def _save_and_confirm_plan(phone: str, name: str, week: str, raw_text: str, pars
         f"Je t'enverrai un message 30 min avant chaque séance, "
         f"et je vérifierai le soir si tu l'as faite. Let's go ! 🔥"
     )
+
+
+def _is_no(text: str) -> bool:
+    t = text.lower().strip()
+    return t in {"non", "no", "nope", "nan", "nah", "c'est bon", "c bon", "ça suffit", "pas d'autre", "rien d'autre"} \
+        or t.startswith("non") or t.startswith("c'est tout")
+
+
+def _is_yes(text: str) -> bool:
+    t = text.lower().strip()
+    return t in {"oui", "yes", "ouais", "yep", "ouep", "yop", "ok", "oké"}
 
 
 async def handle_checkin_response(
