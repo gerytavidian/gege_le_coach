@@ -1,5 +1,5 @@
 """
-llm.py — Appels à Google Gemini 1.5 Flash
+llm.py — Appels à Groq (Llama 3.3 70B)
 """
 
 import json
@@ -8,42 +8,46 @@ import os
 import re
 from datetime import date, timedelta
 
-import google.generativeai as genai
+from groq import AsyncGroq
 
 log = logging.getLogger(__name__)
 
-_model = None
+_client = None
 
 _SYSTEM_PROMPT = """Tu es un mec français de 22 ans qui vit en région parisienne. Tu parles exactement comme tu texterais à un pote — pas de ponctuation excessive, minuscules par défaut, abréviations naturelles. Tu utilises le vocabulaire courant en France en 2026 : "ouf", "c'est chaud", "wesh", "c'est relou", "jsp", "tfk", "ngl", "no cap", "c'est validé", "t'es câblé", "ça claque", "j'suis dans le dur", "tkt", "c'est mort", "on s'en bat les couilles", "genre", "là direct", "c'est ouf quand même". Tu mélanges naturellement de l'argot français classique avec des anglicismes TikTok. Tu dis jamais "Bien sûr !" ou "Absolument !" ou des formules de chatbot. Tu réponds court si la question est courte. T'as des opinions, t'hésites pas à dire si quelque chose te saoule ou si c'est cool. T'es pas formel pour un sou."""
 
+_MODEL = "llama-3.3-70b-versatile"
 
-def _get_model():
-    global _model
-    if _model is None:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-        _model = genai.GenerativeModel(
-            "gemini-2.0-flash",
-            system_instruction=_SYSTEM_PROMPT,
-        )
-    return _model
+
+def _get_client() -> AsyncGroq:
+    global _client
+    if _client is None:
+        _client = AsyncGroq(api_key=os.environ["GROQ_API_KEY"])
+    return _client
 
 
 def _extract_json(text: str) -> dict | list | None:
-    """Extrait le premier bloc JSON valide d'une réponse Gemini."""
+    """Extrait le premier bloc JSON valide d'une réponse LLM."""
     match = re.search(r"```(?:json)?\s*([\s\S]+?)\s*```", text)
     if match:
         text = match.group(1)
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        log.warning("JSON invalide reçu de Gemini : %r", text[:300])
+        log.warning("JSON invalide reçu du LLM : %r", text[:300])
         return None
 
 
 async def _generate(prompt: str) -> str:
-    model = _get_model()
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    client = _get_client()
+    response = await client.chat.completions.create(
+        model=_MODEL,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return response.choices[0].message.content.strip()
 
 
 # ── Extraction du blaze ────────────────────────────────────────────────────────
