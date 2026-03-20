@@ -42,11 +42,13 @@ def next_week_start() -> str:
 async def send_weekly_report():
     week  = current_week_start()
     users = _get_all_users()
-    for phone in users:
+    for user in users:
+        phone = user["phone"]
+        name  = user["name"] or "chef"
         sessions = db.get_sessions_for_week(phone, week)
         if not sessions:
             continue
-        report = await llm.generate_weekly_report([dict(s) for s in sessions])
+        report = await llm.generate_weekly_report(name, [dict(s) for s in sessions])
         _send(phone, f"📊 *Bilan de ta semaine* :\n\n{report}")
         log.info("Rapport hebdo envoyé → %s", phone)
 
@@ -54,18 +56,16 @@ async def send_weekly_report():
 # ── Tâche 2 : Dimanche 22h10 — demande le planning de la semaine suivante ─────
 
 async def ask_weekly_plan():
-    """
-    Envoyé le dimanche soir pour que l'utilisateur prépare sa semaine.
-    On vérifie qu'il n'a pas déjà envoyé un plan pour la semaine prochaine.
-    """
     next_week = next_week_start()
     users = _get_all_users()
-    for phone in users:
+    for user in users:
+        phone = user["phone"]
+        name  = user["name"] or "chef"
         plan = db.get_weekly_plan(phone, next_week)
         if plan is None:
             _send(
                 phone,
-                "Prêt(e) pour la semaine prochaine ? 💪\n\n"
+                f"Eh {name}, t'es prêt pour la semaine prochaine ? 💪\n\n"
                 "Dis-moi quels sports tu prévois et à quelle heure.\n"
                 "Ex : \"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\"",
             )
@@ -88,7 +88,9 @@ async def send_reminders():
         )
         diff = abs((planned_dt - target).total_seconds())
         if diff <= 60 and not s["reminder_sent"]:
-            msg = await llm.generate_encouragement(s["sport"], s["planned_time"])
+            user = db.get_user(s["phone"])
+            name = user["name"] if user and user["name"] else "chef"
+            msg = await llm.generate_encouragement(name, s["sport"], s["planned_time"])
             _send(s["phone"], msg)
             db.mark_reminder_sent(s["id"])
             log.info("Reminder envoyé → %s pour %s", s["phone"], s["sport"])
@@ -112,7 +114,9 @@ async def send_evening_checkin():
             by_user.setdefault(s["phone"], []).append(s)
 
     for phone, user_sessions in by_user.items():
-        msg = await llm.generate_checkin_message(user_sessions)
+        user = db.get_user(phone)
+        name = user["name"] if user and user["name"] else "chef"
+        msg = await llm.generate_checkin_message(name, user_sessions)
         _send(phone, msg)
         for s in user_sessions:
             db.mark_checkin_sent(s["id"])
@@ -134,20 +138,22 @@ async def send_monthly_report():
     month_label = f"{months_fr[month]} {year}"
 
     users = _get_all_users()
-    for phone in users:
+    for user in users:
+        phone = user["phone"]
+        name  = user["name"] or "chef"
         sessions = db.get_sessions_for_month(phone, year, month)
-        report = await llm.generate_monthly_report([dict(s) for s in sessions], month_label)
+        report = await llm.generate_monthly_report(name, [dict(s) for s in sessions], month_label)
         _send(phone, f"📅 *Bilan du mois de {month_label}* :\n\n{report}")
         log.info("Rapport mensuel envoyé → %s (%s)", phone, month_label)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _get_all_users() -> list[str]:
+def _get_all_users() -> list[dict]:
     with db.get_db() as cur:
-        cur.execute("SELECT phone FROM users")
+        cur.execute("SELECT phone, name FROM users")
         rows = cur.fetchall()
-    return [r["phone"] for r in rows]
+    return [dict(r) for r in rows]
 
 
 # ── Initialisation ─────────────────────────────────────────────────────────────

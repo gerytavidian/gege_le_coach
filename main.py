@@ -7,7 +7,6 @@ import logging
 from datetime import date, datetime, timedelta
 
 from fastapi import FastAPI, Form, Response
-from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
 
 import database as db
@@ -17,13 +16,8 @@ from scheduler import start_scheduler
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# ── Numéro unique pour l'instant ───────────────────────────────────────────────
-# Si plusieurs users à terme, on le tire du webhook.
-SINGLE_USER_PHONE = None   # sera rempli au premier message reçu
-
 
 def current_week_start() -> str:
-    """Retourne le lundi de la semaine courante au format ISO (YYYY-MM-DD)."""
     today = date.today()
     return (today - timedelta(days=today.weekday())).isoformat()
 
@@ -44,7 +38,6 @@ app = FastAPI(lifespan=lifespan)
 # ── Envoi de message sortant ───────────────────────────────────────────────────
 
 def send_whatsapp(to: str, body: str):
-    """Envoie un message WhatsApp via Twilio REST."""
     import os
     from twilio.rest import Client
 
@@ -67,73 +60,79 @@ async def webhook(
     From: str = Form(...),
     Body: str = Form(...),
 ):
-    """
-    Twilio appelle ce endpoint à chaque message entrant.
-    From  : 'whatsapp:+33XXXXXXXXX'
-    Body  : texte du message
-    """
-    global SINGLE_USER_PHONE
-
     phone = From.replace("whatsapp:", "")
     text  = Body.strip()
     week  = current_week_start()
 
     log.info("Message reçu de %s : %r", phone, text)
 
-    # Enregistre l'utilisateur si nouveau
     db.upsert_user(phone)
-    SINGLE_USER_PHONE = phone
+    user = db.get_user(phone)
 
-    # Détermine le contexte : est-ce une réponse au plan hebdo ?
-    plan = db.get_weekly_plan(phone, week)
-    pending = db.get_pending_checkin_sessions(phone, week)
-
-    reply = await dispatch(phone, text, week, plan, pending)
+    reply = await dispatch(phone, text, week, user)
 
     if reply:
         send_whatsapp(phone, reply)
 
-    # Twilio attend un 200 vide (on a déjà envoyé via REST)
     return Response(content="", media_type="text/xml")
 
 
 # ── Dispatch ───────────────────────────────────────────────────────────────────
 
-async def dispatch(
-    phone: str,
-    text: str,
-    week: str,
-    plan,
-    pending_checkins: list,
-) -> str | None:
-    """
-    Routing conversationnel minimaliste basé sur le contexte DB.
-    Retourne le texte de réponse, ou None si pas de réponse immédiate.
-    """
+async def dispatch(phone: str, text: str, week: str, user) -> str | None:
 
-    # 1. Des check-ins en attente de réponse ? → traiter comme réponse de bilan
-    if pending_checkins:
-        return await handle_checkin_response(phone, text, week, pending_checkins)
+    # 1. Pas encore de nom — premier contact
+    if not user["name"] and not user["awaiting_name"]:
+        db.set_awaiting_name(phone, True)
+        return "Yo ! C'est quoi déjà ton blaze chef ? 👊"
 
-    # 2. Pas encore de plan cette semaine ? → traiter comme planning
+    # 2. En attente du blaze
+    if user["awaiting_name"]:
+        return await handle_name_response(phone, text)
+
+    name = user["name"]
+
+    # 3. En attente d'un commentaire de séance
+    sessions_awaiting_comment = db.get_sessions_awaiting_comment(phone)
+    if sessions_awaiting_comment:
+        return await handle_comment_response(text, sessions_awaiting_comment)
+
+    # 4. Des check-ins en attente de réponse ?
+    pending = db.get_pending_checkin_sessions(phone, week)
+    if pending:
+        return await handle_checkin_response(phone, name, text, pending)
+
+    # 5. Pas encore de plan cette semaine ?
+    plan = db.get_weekly_plan(phone, week)
     if plan is None:
-        return await handle_weekly_plan(phone, text, week)
+        return await handle_weekly_plan(phone, name, text, week)
 
-    # 3. Plan déjà enregistré : message libre / question
-    return await handle_free_message(phone, text, week)
+    # 6. Message libre
+    return await handle_free_message(phone, name, text, week)
 
 
 # ── Handlers ───────────────────────────────────────────────────────────────────
 
-async def handle_weekly_plan(phone: str, text: str, week: str) -> str:
-    """L'utilisateur envoie son planning de la semaine."""
+async def handle_name_response(phone: str, text: str) -> str:
+    name = await llm.extract_name(text)
+    if not name:
+        return "J'ai pas capté ton blaze là, tu peux redire ?"
+    db.set_user_name(phone, name)
+    return (
+        f"C'est noté {name} 💪 Bienvenue dans l'équipe !\n\n"
+        f"Maintenant dis-moi ton programme sportif de la semaine et j'gère tout.\n"
+        f"Ex : \"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
+    )
+
+
+async def handle_weekly_plan(phone: str, name: str, text: str, week: str) -> str:
     parsed = await llm.parse_weekly_plan(text)
 
     if not parsed or not parsed.get("sessions"):
         return (
-            "Je n'ai pas bien compris ton planning 😅\n"
-            "Dis-moi quelque chose comme :\n"
-            "\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
+            f"J'ai pas bien compris ton planning {name} 😅\n"
+            f"Dis-moi quelque chose comme :\n"
+            f"\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
         )
 
     raw_json = json.dumps(parsed, ensure_ascii=False)
@@ -146,43 +145,66 @@ async def handle_weekly_plan(phone: str, text: str, week: str) -> str:
         for s in sessions
     )
     return (
-        f"Super ! J'ai noté ton programme pour cette semaine 💪\n\n"
+        f"C'est bon {name}, j'ai tout noté 💪\n\n"
         f"{lines}\n\n"
-        f"Je t'enverrai un message d'encouragement 30 min avant chaque séance, "
+        f"Je t'enverrai un message 30 min avant chaque séance, "
         f"et je vérifierai le soir si tu l'as faite. Let's go ! 🔥"
     )
 
 
 async def handle_checkin_response(
-    phone: str, text: str, week: str, pending: list
+    phone: str, name: str, text: str, pending: list
 ) -> str:
-    """L'utilisateur répond au bilan du soir."""
     result = await llm.parse_checkin_response(text, [dict(s) for s in pending])
 
     if not result:
-        return "Je n'ai pas compris ta réponse. Tu as pu t'entraîner aujourd'hui ? 🙂"
+        return f"J'ai pas compris {name}, t'as pu t'entraîner aujourd'hui ? 🙂"
 
-    updated = []
+    done_sessions   = []
+    missed_sessions = []
+
     for item in result:
         db.mark_session_done(item["session_id"], 1 if item["done"] else -1)
-        updated.append(item)
+        session = next((s for s in pending if s["id"] == item["session_id"]), None)
+        if session:
+            if item["done"]:
+                done_sessions.append(dict(session))
+            else:
+                missed_sessions.append(dict(session))
 
-    done_count = sum(1 for i in updated if i["done"])
-    missed_count = len(updated) - done_count
+    if done_sessions and missed_sessions:
+        done_sports   = [s["sport"] for s in done_sessions]
+        missed_sports = [s["sport"] for s in missed_sessions]
+        for s in done_sessions:
+            db.mark_comment_requested(s["id"])
+        msg_done   = await llm.generate_checkin_done_message(name, done_sports)
+        msg_missed = await llm.generate_checkin_missed_message(name, missed_sports)
+        return f"{msg_done}\n\n---\n{msg_missed}"
 
-    if missed_count == 0:
-        return "Excellent ! Toutes tes séances cochées ✅ Continue comme ça !"
-    elif done_count == 0:
-        return "Pas de souci, ça arrive 💙 L'important c'est de repartir demain !"
-    else:
-        return f"{done_count} séance(s) faite(s) ✅, {missed_count} manquée(s). Bien essayé, on continue !"
+    if done_sessions:
+        done_sports = [s["sport"] for s in done_sessions]
+        for s in done_sessions:
+            db.mark_comment_requested(s["id"])
+        return await llm.generate_checkin_done_message(name, done_sports)
+
+    # Toutes ratées
+    missed_sports = [s["sport"] for s in missed_sessions]
+    return await llm.generate_checkin_missed_message(name, missed_sports)
 
 
-async def handle_free_message(phone: str, text: str, week: str) -> str:
-    """Message hors contexte : question libre, modification de planning, etc."""
+async def handle_comment_response(text: str, sessions: list) -> str:
+    for session in sessions:
+        parsed_stats = await llm.parse_session_comment(text, session["sport"])
+        db.save_session_comment(session["id"], text, parsed_stats)
+
+    sports = ", ".join(s["sport"] for s in sessions)
+    return f"C'est noté pour {sports} 👍 On continue !"
+
+
+async def handle_free_message(phone: str, name: str, text: str, week: str) -> str:
     sessions = db.get_sessions_for_week(phone, week)
     context = json.dumps([dict(s) for s in sessions], ensure_ascii=False, default=str)
-    return await llm.handle_free_message(text, context)
+    return await llm.handle_free_message(name, text, context)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

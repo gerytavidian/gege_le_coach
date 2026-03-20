@@ -29,11 +29,17 @@ def init_db():
     with get_db() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                phone        TEXT PRIMARY KEY,
-                name         TEXT,
-                created_at   TIMESTAMP DEFAULT NOW()
+                phone           TEXT PRIMARY KEY,
+                name            TEXT,
+                awaiting_name   BOOLEAN DEFAULT FALSE,
+                created_at      TIMESTAMP DEFAULT NOW()
             )
         """)
+        # Migration si la table existe déjà sans awaiting_name
+        cur.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS awaiting_name BOOLEAN DEFAULT FALSE
+        """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS weekly_plans (
                 id           SERIAL PRIMARY KEY,
@@ -45,20 +51,31 @@ def init_db():
                 UNIQUE(phone, week_start)
             )
         """)
+
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
-                id              SERIAL PRIMARY KEY,
-                phone           TEXT NOT NULL,
-                week_start      TEXT NOT NULL,
-                sport           TEXT NOT NULL,
-                planned_day     TEXT NOT NULL,
-                planned_time    TEXT NOT NULL,
-                done            INTEGER DEFAULT 0,
-                reminder_sent   INTEGER DEFAULT 0,
-                checkin_sent    INTEGER DEFAULT 0,
-                created_at      TIMESTAMP DEFAULT NOW()
+                id                  SERIAL PRIMARY KEY,
+                phone               TEXT NOT NULL,
+                week_start          TEXT NOT NULL,
+                sport               TEXT NOT NULL,
+                planned_day         TEXT NOT NULL,
+                planned_time        TEXT NOT NULL,
+                done                INTEGER DEFAULT 0,
+                reminder_sent       INTEGER DEFAULT 0,
+                checkin_sent        INTEGER DEFAULT 0,
+                comment             TEXT,
+                parsed_stats        TEXT,
+                comment_requested   INTEGER DEFAULT 0,
+                created_at          TIMESTAMP DEFAULT NOW()
             )
         """)
+        # Migration si la table sessions existe déjà sans les nouvelles colonnes
+        for col, definition in [
+            ("comment",           "TEXT"),
+            ("parsed_stats",      "TEXT"),
+            ("comment_requested", "INTEGER DEFAULT 0"),
+        ]:
+            cur.execute(f"ALTER TABLE sessions ADD COLUMN IF NOT EXISTS {col} {definition}")
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -76,6 +93,22 @@ def get_user(phone: str):
     with get_db() as cur:
         cur.execute("SELECT * FROM users WHERE phone = %s", (phone,))
         return cur.fetchone()
+
+
+def set_user_name(phone: str, name: str):
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE users SET name = %s, awaiting_name = FALSE WHERE phone = %s",
+            (name, phone),
+        )
+
+
+def set_awaiting_name(phone: str, value: bool):
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE users SET awaiting_name = %s WHERE phone = %s",
+            (value, phone),
+        )
 
 
 # ── Weekly plans ───────────────────────────────────────────────────────────────
@@ -159,6 +192,30 @@ def mark_session_done(session_id: int, done: int):
     """done: 1=fait, -1=raté"""
     with get_db() as cur:
         cur.execute("UPDATE sessions SET done = %s WHERE id = %s", (done, session_id))
+
+
+def mark_comment_requested(session_id: int):
+    with get_db() as cur:
+        cur.execute("UPDATE sessions SET comment_requested = 1 WHERE id = %s", (session_id,))
+
+
+def get_sessions_awaiting_comment(phone: str) -> list:
+    """Sessions faites pour lesquelles un commentaire a été demandé mais pas encore reçu."""
+    with get_db() as cur:
+        cur.execute(
+            """SELECT * FROM sessions
+               WHERE phone = %s AND done = 1 AND comment_requested = 1 AND comment IS NULL""",
+            (phone,),
+        )
+        return cur.fetchall()
+
+
+def save_session_comment(session_id: int, comment: str, parsed_stats: str | None):
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE sessions SET comment = %s, parsed_stats = %s, comment_requested = 0 WHERE id = %s",
+            (comment, parsed_stats, session_id),
+        )
 
 
 def get_sessions_for_month(phone: str, year: int, month: int) -> list:
