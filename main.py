@@ -83,7 +83,37 @@ async def webhook(
 
 # ── Dispatch ───────────────────────────────────────────────────────────────────
 
+_AIDE_KEYWORDS = {"aide", "help", "sos", "?", "quoi", "comment", "c quoi"}
+
+def _is_aide(text: str) -> bool:
+    return text.lower().strip() in _AIDE_KEYWORDS
+
+
+_AIDE_MESSAGE = (
+    "Voilà comment je fonctionne 👋\n\n"
+    "*Mon rôle :* Je suis ton coach perso. Chaque semaine tu me dis ton planning sport, "
+    "je t'envoie un rappel 30 min avant chaque séance, et le soir je vérifie si tu l'as faite.\n\n"
+    "*Comment me donner ton planning :*\n"
+    "Envoie-moi tes séances en un message, ex :\n"
+    "\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\"\n\n"
+    "*Ce que je fais automatiquement :*\n"
+    "• Reminder 30 min avant chaque séance\n"
+    "• Check-in le soir pour valider si c'est fait\n"
+    "• Bilan hebdo le dimanche soir\n"
+    "• Bilan mensuel en fin de mois\n\n"
+    "*Commandes :*\n"
+    "• *aide* — affiche ce guide\n"
+    "• *pause* — coupe les rappels (vacances, blessure)\n"
+    "• *reprendre* — relance les rappels\n\n"
+    "Pour tout le reste, parle-moi de ton sport ! 💪"
+)
+
+
 async def dispatch(phone: str, text: str, week: str, user) -> list[str] | str | None:
+
+    # 0. Commande aide (toujours disponible)
+    if _is_aide(text):
+        return _AIDE_MESSAGE
 
     # 1. Pas encore de nom — premier contact
     if not user["name"] and not user["awaiting_name"]:
