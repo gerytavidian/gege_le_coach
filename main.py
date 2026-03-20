@@ -83,7 +83,38 @@ async def webhook(
 
 # ── Dispatch ───────────────────────────────────────────────────────────────────
 
+def _is_pause(text: str) -> bool:
+    t = text.lower().strip()
+    return t in {"pause", "en pause", "stop reminders", "vacances", "blessure"}
+
+
+def _is_reprendre(text: str) -> bool:
+    t = text.lower().strip()
+    return t in {"reprendre", "retour", "je reprends", "relance", "j'y retourne", "c'est reparti"}
+
+
 async def dispatch(phone: str, text: str, week: str, user) -> list[str] | str | None:
+
+    # 0. Commandes pause / reprendre (toujours disponibles)
+    if _is_reprendre(text):
+        db.set_user_paused(phone, False)
+        name = user["name"] or "chef"
+        return (
+            f"C'est reparti {name} 💪 Les rappels et check-ins sont de nouveau actifs. "
+            f"Dis-moi ton planning sport pour la semaine !"
+        )
+
+    if _is_pause(text):
+        db.set_user_paused(phone, True)
+        name = user["name"] or "chef"
+        return (
+            f"Ok {name}, je mets tout en pause 🛑 Plus de rappels ni de check-ins jusqu'à ce que tu m'envoies *reprendre*."
+        )
+
+    # Si l'utilisateur est en pause, on l'informe
+    if user.get("paused"):
+        name = user["name"] or "chef"
+        return f"T'es en pause {name} 🔕 Envoie *reprendre* quand tu veux relancer."
 
     # 1. Pas encore de nom — premier contact
     if not user["name"] and not user["awaiting_name"]:
@@ -116,7 +147,7 @@ async def dispatch(phone: str, text: str, week: str, user) -> list[str] | str | 
     if plan is None:
         return await handle_weekly_plan(phone, name, text, week)
 
-    # 6. Message libre
+    # 7. Message libre
     return await handle_free_message(phone, name, text, week)
 
 

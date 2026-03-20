@@ -89,6 +89,8 @@ async def send_reminders():
         diff = abs((planned_dt - target).total_seconds())
         if diff <= 60 and not s["reminder_sent"]:
             user = db.get_user(s["phone"])
+            if user and user.get("paused"):
+                continue
             name = user["name"] if user and user["name"] else "chef"
             msg = await llm.generate_encouragement(name, s["sport"], s["planned_time"])
             _send(s["phone"], msg)
@@ -115,6 +117,8 @@ async def send_evening_checkin():
 
     for phone, user_sessions in by_user.items():
         user = db.get_user(phone)
+        if user and user.get("paused"):
+            continue
         name = user["name"] if user and user["name"] else "chef"
         msg = await llm.generate_checkin_message(name, user_sessions)
         _send(phone, msg)
