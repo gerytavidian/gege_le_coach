@@ -197,8 +197,9 @@ async def handle_name_response(phone: str, text: str) -> list[str] | str:
     time_str = now.strftime("%Hh%M")
 
     return [
-        f"Moi c'est Gege ton coach 💪 J'suis là pour surveiller et tracker si tu tiens tes engagements de sport chaque semaine. "
-        f"Chaque semaine tu devras me répondre si oui ou non tu l'as bien fait, avec un ptit commentaire pour l'histoire.",
+        f"Moi c'est Gege ton coach 💪 Mon taf c'est de tracker tes séances de sport semaine après semaine. "
+        f"Tu me donnes ton planning, je t'envoie un rappel 30 min avant chaque séance et je vérifie le soir si t'as assuré. "
+        f"Chaque dimanche je t'envoie un bilan de ta semaine, et en fin de mois un rapport complet pour voir ta progression sur la durée.",
         f"On va commencer : cette semaine on est {day_fr} et il est {time_str}. "
         f"Quand compte tu faire du sport avant dimanche soir {name} ?",
     ]
@@ -208,11 +209,8 @@ async def handle_weekly_plan(phone: str, name: str, text: str, week: str) -> str
     parsed = await llm.parse_weekly_plan(text)
 
     if not parsed or not parsed.get("sessions"):
-        return (
-            f"J'ai pas bien compris ton planning {name} 😅\n"
-            f"Dis-moi quelque chose comme :\n"
-            f"\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
-        )
+        # Pas un planning — traiter comme message libre
+        return await handle_free_message(phone, name, text, week)
 
     question = _missing_question(parsed["sessions"])
     if question:
