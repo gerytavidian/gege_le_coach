@@ -22,7 +22,7 @@ def _get_model():
     if _model is None:
         genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         _model = genai.GenerativeModel(
-            "gemini-1.5-flash",
+            "gemini-2.0-flash",
             system_instruction=_SYSTEM_PROMPT,
         )
     return _model
@@ -220,7 +220,7 @@ Mentionne son prénom. Ton décontracté, 1 emoji.
 
 # ── Rapport hebdomadaire ──────────────────────────────────────────────────────
 
-async def generate_weekly_report(name: str, sessions: list[dict]) -> str:
+async def generate_weekly_report(name: str, sessions: list[dict], week_streak: int = 0) -> str:
     done    = [s for s in sessions if s["done"] == 1]
     missed  = [s for s in sessions if s["done"] == -1]
     unknown = [s for s in sessions if s["done"] == 0]
@@ -253,6 +253,10 @@ async def generate_weekly_report(name: str, sessions: list[dict]) -> str:
     if no_comment_count:
         comments_lines += f"\n  - {no_comment_count} séance(s) sans commentaire"
 
+    streak_line = ""
+    if week_streak >= 2:
+        streak_line = f"\n- 🔥 Streak semaines actives : {week_streak} semaines de suite avec au moins une séance faite"
+
     prompt = f"""Tu es un pote coach sportif qui parle un français relâché et familier.
 Génère un bilan de semaine pour {name}.
 
@@ -261,15 +265,16 @@ Données :
 - Séances faites : {done_n} ({done_list})
 - Séances manquées : {len(missed)} ({missed_list})
 - Séances non confirmées : {len(unknown)}
-- Streak de jours actifs en fin de semaine : {streak}
+- Streak de jours actifs en fin de semaine : {streak}{streak_line}
 {comments_lines}
 
 Le bilan doit :
 1. Féliciter ou taquiner selon les résultats, dans le ton pote familier
-2. Mentionner les stats/commentaires marquants s'il y en a
-3. Terminer par un défi ou encouragement pour la semaine suivante
-4. Mentionner le prénom {name}
-5. 2-3 emojis, 6-8 lignes max, lisible sur WhatsApp
+2. Si le streak de semaines est >= 2, le mentionner fièrement (ex: "X semaines de suite t'as assuré" ou "X semaines sans flancher")
+3. Mentionner les stats/commentaires marquants s'il y en a
+4. Terminer par un défi ou encouragement pour la semaine suivante
+5. Mentionner le prénom {name}
+6. 2-3 emojis, 6-8 lignes max, lisible sur WhatsApp
 """
     return await _generate(prompt)
 

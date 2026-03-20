@@ -48,7 +48,8 @@ async def send_weekly_report():
         sessions = db.get_sessions_for_week(phone, week)
         if not sessions:
             continue
-        report = await llm.generate_weekly_report(name, [dict(s) for s in sessions])
+        week_streak = db.get_week_streak(phone, week)
+        report = await llm.generate_weekly_report(name, [dict(s) for s in sessions], week_streak)
         _send(phone, f"📊 *Bilan de ta semaine* :\n\n{report}")
         log.info("Rapport hebdo envoyé → %s", phone)
 

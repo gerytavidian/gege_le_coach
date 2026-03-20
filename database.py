@@ -278,6 +278,30 @@ def get_sessions_for_month(phone: str, year: int, month: int) -> list:
         return cur.fetchall()
 
 
+def get_week_streak(phone: str, current_week_start: str) -> int:
+    """
+    Retourne le nombre de semaines consécutives (en remontant depuis current_week_start inclus)
+    où l'utilisateur a fait au moins 1 séance.
+    """
+    with get_db() as cur:
+        cur.execute(
+            """SELECT DISTINCT week_start FROM sessions
+               WHERE phone = %s AND done = 1
+               ORDER BY week_start DESC""",
+            (phone,),
+        )
+        rows = cur.fetchall()
+    active_weeks = {r["week_start"] for r in rows}
+
+    from datetime import date, timedelta
+    streak = 0
+    week = date.fromisoformat(current_week_start)
+    while week.isoformat() in active_weeks:
+        streak += 1
+        week -= timedelta(weeks=1)
+    return streak
+
+
 def get_pending_checkin_sessions(phone: str, week_start: str) -> list:
     """Sessions dont le check-in n'a pas encore reçu de réponse (done=0)."""
     with get_db() as cur:
