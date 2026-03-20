@@ -149,6 +149,15 @@ async def handle_weekly_plan(phone: str, name: str, text: str, week: str) -> str
             f"\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
         )
 
+    sessions_missing_time = [s for s in parsed["sessions"] if not s.get("time")]
+    if sessions_missing_time:
+        days_fr = {
+            "monday": "lundi", "tuesday": "mardi", "wednesday": "mercredi",
+            "thursday": "jeudi", "friday": "vendredi", "saturday": "samedi", "sunday": "dimanche",
+        }
+        missing = ", ".join(days_fr.get(s["day"], s["day"]) for s in sessions_missing_time)
+        return f"À quelle heure {missing} ?"
+
     raw_json = json.dumps(parsed, ensure_ascii=False)
     db.upsert_weekly_plan(phone, week, text, raw_json)
     db.insert_sessions(phone, week, parsed["sessions"])
