@@ -90,22 +90,28 @@ def _is_aide(text: str) -> bool:
 
 
 _AIDE_MESSAGE = (
-    "Voilà comment je fonctionne 👋\n\n"
-    "*Mon rôle :* Je suis ton coach perso. Chaque semaine tu me dis ton planning sport, "
-    "je t'envoie un rappel 30 min avant chaque séance, et le soir je vérifie si tu l'as faite.\n\n"
-    "*Comment me donner ton planning :*\n"
-    "Envoie-moi tes séances en un message, ex :\n"
-    "\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\"\n\n"
+    "📖 *Guide complet — Gege le coach*\n\n"
+    "*C'est quoi mon rôle ?*\n"
+    "Je suis ton coach sportif perso sur WhatsApp. Mon taf : t'aider à tenir tes engagements sport semaine après semaine. "
+    "Tu me donnes ton planning, je te suis, je te motive, et je te tiens accountable.\n\n"
+    "*Comment me donner ton planning ?*\n"
+    "Envoie-moi tes séances en un message naturel, ex :\n"
+    "\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\"\n"
+    "Je peux gérer plusieurs séances le même jour, tous les sports, toutes les heures.\n\n"
     "*Ce que je fais automatiquement :*\n"
-    "• Reminder 30 min avant chaque séance\n"
-    "• Check-in le soir pour valider si c'est fait\n"
-    "• Bilan hebdo le dimanche soir\n"
-    "• Bilan mensuel en fin de mois\n\n"
-    "*Commandes :*\n"
+    "• ⏰ Rappel 30 min avant chaque séance pour te motiver\n"
+    "• 🌙 Check-in le soir pour confirmer si t'as fait la séance\n"
+    "• 📊 Bilan hebdo chaque dimanche soir — séances faites, ratées, streak\n"
+    "• 📅 Rapport mensuel en fin de mois — ta progression sur la durée\n\n"
+    "*Tu peux aussi me poser des questions sport :*\n"
+    "Conseils muscu, running, récup, nutrition sportive... je réponds en mode coach. "
+    "Pour tout ce qui est hors sport, je suis pas qualifié 😅\n\n"
+    "*Commandes disponibles :*\n"
     "• *aide* — affiche ce guide\n"
-    "• *pause* — coupe les rappels (vacances, blessure)\n"
-    "• *reprendre* — relance les rappels\n\n"
-    "Pour tout le reste, parle-moi de ton sport ! 💪"
+    "• *pause* — coupe tous les rappels (vacances, blessure)\n"
+    "• *reprendre* — relance les rappels après une pause\n"
+    "• *reset* — repart de zéro (efface tout ton historique)\n\n"
+    "Des questions ? Parle-moi ! 💪"
 )
 
 
@@ -207,7 +213,8 @@ async def handle_name_response(phone: str, text: str) -> list[str] | str:
     return [
         f"Moi c'est Gege ton coach 💪 Mon taf c'est de tracker tes séances de sport semaine après semaine. "
         f"Tu me donnes ton planning, je t'envoie un rappel 30 min avant chaque séance et je vérifie le soir si t'as assuré. "
-        f"Chaque dimanche je t'envoie un bilan de ta semaine, et en fin de mois un rapport complet pour voir ta progression sur la durée.",
+        f"Chaque dimanche je t'envoie un bilan de ta semaine, et en fin de mois un rapport complet pour voir ta progression sur la durée. "
+        f"Si t'es perdu à un moment, tape *aide* et je t'explique tout 👌",
         f"On va commencer : cette semaine on est {day_fr} et il est {time_str}. "
         f"Quand compte tu faire du sport avant dimanche soir {name} ?",
     ]
