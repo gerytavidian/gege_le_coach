@@ -148,10 +148,14 @@ async def generate_checkin_missed_message(name: str, sports: list[str]) -> str:
 L'utilisateur {name} n'a pas fait ses séances : {sports_str}.
 
 Génère un message en 2 parties :
-1. Une phrase taquine avec l'esprit de "tu déçois ton coach mon gars" (varie la formulation, reste bienveillant). Utilise son prénom {name}.
-2. Une stat choc et vraie sur l'obésité ou la sédentarité en France ou dans le monde (différente à chaque fois, courte, percutante). Commence cette partie par "Stat du jour : ".
+1. Une phrase qui pioche ALÉATOIREMENT parmi ces trois registres (varie à chaque fois, n'utilise pas toujours le même) :
+   - Déception du coach : genre "tu déçois ton coach là mon gars", taquin et bienveillant
+   - C'est grave : genre "non mais sérieux c'est pas possible", un peu dramatique mais sympa
+   - Tant que tu fais la prochaine : genre "ok c'est raté mais la prochaine tu assures hein", encourageant
+   Utilise le prénom {name}. Ton familier, naturel.
+2. Une stat choc et vraie sur l'obésité ou la sédentarité en France ou dans le monde (différente à chaque fois, courte, percutante). Commence par "Stat du jour : ".
 
-Ton familier, 1 emoji max au total. Varie les formulations à chaque fois.
+1 emoji max au total. Ne commence pas tous les messages pareil.
 """
     return await _generate(prompt)
 
