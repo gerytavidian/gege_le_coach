@@ -360,6 +360,8 @@ async def handle_free_message(name: str, user_message: str, sessions_context: st
 Tu réponds de manière courte et sympa (3-4 phrases max). 1-2 emojis.
 Mentionne le prénom {name} si c'est naturel.
 
+Si le message n'est pas lié au sport, à l'entraînement ou à la santé physique, réponds uniquement : "Je suis coach de sport, je sais pas répondre à ça 😅"
+
 Contexte – séances de {name} cette semaine (JSON) :
 {sessions_context}
 
