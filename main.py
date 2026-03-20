@@ -84,7 +84,7 @@ async def dispatch(phone: str, text: str, week: str, user) -> str | None:
     # 1. Pas encore de nom — premier contact
     if not user["name"] and not user["awaiting_name"]:
         db.set_awaiting_name(phone, True)
-        return "Yo ! C'est quoi déjà ton blaze chef ? 👊"
+        return "C'est quoi déjà ton blaze chef ?"
 
     # 2. En attente du blaze
     if user["awaiting_name"]:
