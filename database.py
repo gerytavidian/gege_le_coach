@@ -35,9 +35,12 @@ def init_db():
                 created_at      TIMESTAMP DEFAULT NOW()
             )
         """)
-        # Migration si la table existe déjà sans awaiting_name
+        # Migration si la table existe déjà sans awaiting_name / awaiting_plan_details
         cur.execute("""
             ALTER TABLE users ADD COLUMN IF NOT EXISTS awaiting_name BOOLEAN DEFAULT FALSE
+        """)
+        cur.execute("""
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS awaiting_plan_details TEXT
         """)
 
         cur.execute("""
@@ -108,6 +111,21 @@ def set_awaiting_name(phone: str, value: bool):
         cur.execute(
             "UPDATE users SET awaiting_name = %s WHERE phone = %s",
             (value, phone),
+        )
+
+
+def get_awaiting_plan_details(phone: str) -> str | None:
+    with get_db() as cur:
+        cur.execute("SELECT awaiting_plan_details FROM users WHERE phone = %s", (phone,))
+        row = cur.fetchone()
+        return row["awaiting_plan_details"] if row else None
+
+
+def set_awaiting_plan_details(phone: str, details: str | None):
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE users SET awaiting_plan_details = %s WHERE phone = %s",
+            (details, phone),
         )
 
 

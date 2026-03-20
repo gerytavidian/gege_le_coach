@@ -106,7 +106,12 @@ async def dispatch(phone: str, text: str, week: str, user) -> list[str] | str | 
     if pending:
         return await handle_checkin_response(phone, name, text, pending)
 
-    # 5. Pas encore de plan cette semaine ?
+    # 5. En attente de détails sur le planning (sport ou heure manquant) ?
+    awaiting_details = db.get_awaiting_plan_details(phone)
+    if awaiting_details:
+        return await handle_plan_detail_response(phone, name, text, week, awaiting_details)
+
+    # 6. Pas encore de plan cette semaine ?
     plan = db.get_weekly_plan(phone, week)
     if plan is None:
         return await handle_weekly_plan(phone, name, text, week)
@@ -149,23 +154,65 @@ async def handle_weekly_plan(phone: str, name: str, text: str, week: str) -> str
             f"\"Lundi 7h30 running, mercredi 19h muscu, samedi 10h vélo\""
         )
 
-    sessions_missing_time = [s for s in parsed["sessions"] if not s.get("time")]
-    if sessions_missing_time:
-        days_fr = {
-            "monday": "lundi", "tuesday": "mardi", "wednesday": "mercredi",
-            "thursday": "jeudi", "friday": "vendredi", "saturday": "samedi", "sunday": "dimanche",
-        }
-        missing = ", ".join(days_fr.get(s["day"], s["day"]) for s in sessions_missing_time)
-        return f"À quelle heure {missing} ?"
+    question = _missing_question(parsed["sessions"])
+    if question:
+        db.set_awaiting_plan_details(phone, json.dumps({"original": text}))
+        return question
 
+    return _save_and_confirm_plan(phone, name, week, text, parsed)
+
+
+async def handle_plan_detail_response(
+    phone: str, name: str, text: str, week: str, awaiting_json: str
+) -> str:
+    awaiting = json.loads(awaiting_json)
+    combined = awaiting["original"] + " " + text
+    parsed = await llm.parse_weekly_plan(combined)
+
+    if not parsed or not parsed.get("sessions"):
+        db.set_awaiting_plan_details(phone, None)
+        return (
+            f"J'ai pas compris {name}, dis-moi tout en un message :\n"
+            f"Ex : \"samedi 11h running\""
+        )
+
+    question = _missing_question(parsed["sessions"])
+    if question:
+        db.set_awaiting_plan_details(phone, json.dumps({"original": combined}))
+        return question
+
+    db.set_awaiting_plan_details(phone, None)
+    return _save_and_confirm_plan(phone, name, week, combined, parsed)
+
+
+def _missing_question(sessions: list) -> str | None:
+    days_fr = {
+        "monday": "lundi", "tuesday": "mardi", "wednesday": "mercredi",
+        "thursday": "jeudi", "friday": "vendredi", "saturday": "samedi", "sunday": "dimanche",
+    }
+    missing_time  = [s for s in sessions if not s.get("time")]
+    missing_sport = [s for s in sessions if not s.get("sport")]
+
+    if missing_sport and missing_time:
+        days = ", ".join(days_fr.get(s.get("day", ""), s.get("day", "")) for s in missing_sport)
+        return f"C'est quel sport et à quelle heure {days} ?"
+    if missing_sport:
+        parts = [f"{days_fr.get(s.get('day',''), s.get('day',''))} à {s['time']}" for s in missing_sport]
+        return f"C'est quel sport — {', '.join(parts)} ?"
+    if missing_time:
+        days = ", ".join(days_fr.get(s.get("day", ""), s.get("day", "")) for s in missing_time)
+        return f"À quelle heure {days} ?"
+    return None
+
+
+def _save_and_confirm_plan(phone: str, name: str, week: str, raw_text: str, parsed: dict) -> str:
     raw_json = json.dumps(parsed, ensure_ascii=False)
-    db.upsert_weekly_plan(phone, week, text, raw_json)
+    db.upsert_weekly_plan(phone, week, raw_text, raw_json)
     db.insert_sessions(phone, week, parsed["sessions"])
 
-    sessions = parsed["sessions"]
     lines = "\n".join(
         f"  • {s['sport'].capitalize()} — {_day_fr(s['day'])} à {s['time']}"
-        for s in sessions
+        for s in parsed["sessions"]
     )
     return (
         f"C'est bon {name}, j'ai tout noté 💪\n\n"

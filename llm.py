@@ -90,6 +90,7 @@ Règles :
 - "day" doit être en anglais minuscule (monday, tuesday, wednesday, thursday, friday, saturday, sunday)
 - "time" au format HH:MM (24h)
 - Si l'heure n'est pas précisée, mets null pour le champ "time"
+- Si le sport n'est pas précisé, mets null pour le champ "sport"
 - Si le message ne contient aucune séance sportive, retourne {{"sessions": []}}
 - Ne retourne que le JSON, rien d'autre
 """
